@@ -73,7 +73,7 @@ const CodeBlock = memo(({ language, value, theme, handleDownload, setPreviewCode
         style={theme === 'dark' ? vscDarkPlus : prism}
         customStyle={{ 
           margin: 0, 
-          padding: '24px', 
+          padding: 'clamp(12px, 3vw, 24px)', 
           fontSize: '0.9rem', 
           background: 'transparent',
           lineHeight: '1.5'
