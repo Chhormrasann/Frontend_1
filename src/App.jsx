@@ -25,7 +25,8 @@ import {
   PenTool,
   Paperclip,
   Eye,
-  Download
+  Download,
+  RotateCcw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
@@ -436,6 +437,10 @@ function App() {
 
           <button className="circle-action-btn" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
             {theme === 'dark' ? <Sun size={24} /> : <Moon size={24} />}
+          </button>
+          
+          <button className="circle-action-btn" onClick={() => window.location.reload()}>
+            <RotateCcw size={24} />
           </button>
           
           <button className="circle-action-btn" onClick={() => { if(confirm('Clear all chats?')) { setMessages([]); localStorage.removeItem('chat_history'); } }}>
