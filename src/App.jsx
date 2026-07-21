@@ -273,7 +273,7 @@ function App() {
                 transition={{ delay: 0.2, duration: 0.8 }}
                 className="brand-title"
                >
-                 AuraUI
+                 CodeLume
                </motion.h1>
                <motion.h2 
                 initial={{ opacity: 0, x: -30 }}
@@ -421,7 +421,7 @@ function App() {
             <input 
               type="text" 
               className="aura-input"
-              placeholder="Ask AuraUI"
+              placeholder="Ask CodeLume"
               value={input}
               onChange={(e) => setInput(e.target.value)}
             />
@@ -444,7 +444,7 @@ function App() {
         </div>
 
         <div className="disclaimer-text">
-           AuraUI can make mistakes, so double-check it.
+           CodeLume can make mistakes, so double-check it.
         </div>
       </div>
 
