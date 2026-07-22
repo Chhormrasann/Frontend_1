@@ -25,9 +25,10 @@ import {
   PenTool,
   Paperclip,
   Eye,
-  Download
+  Download,
+  ArrowLeft
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion as Motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -40,7 +41,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/chat'
 // Moved components OUTSIDE to prevent re-mounting on every keystroke
 const CodeBlock = memo(({ language, value, theme, handleDownload, setPreviewCode }) => {
   const [copied, setCopied] = useState(false);
-  
+
   const onCopy = () => {
     navigator.clipboard.writeText(value);
     setCopied(true);
@@ -71,12 +72,14 @@ const CodeBlock = memo(({ language, value, theme, handleDownload, setPreviewCode
       <SyntaxHighlighter
         language={language || 'text'}
         style={theme === 'dark' ? vscDarkPlus : prism}
-        customStyle={{ 
-          margin: 0, 
-          padding: 'clamp(12px, 3vw, 24px)', 
-          fontSize: '0.9rem', 
+        customStyle={{
+          margin: 0,
+          padding: 'clamp(12px, 3vw, 24px)',
+          fontSize: '0.9rem',
           background: 'transparent',
-          lineHeight: '1.5'
+          lineHeight: '1.6',
+          maxHeight: 'min(65vh, 720px)',
+          overflow: 'auto'
         }}
       >
         {value}
@@ -110,11 +113,11 @@ const PreviewModal = memo(({ content, onClose }) => {
 
   return (
     <div className="preview-modal-overlay" onClick={onClose}>
-      <motion.div 
+      <Motion.div
         initial={{ opacity: 0, scale: 0.9, y: 30 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-        className="preview-modal" 
+        className="preview-modal"
         onClick={e => e.stopPropagation()}
       >
         <div className="preview-modal-header">
@@ -122,24 +125,24 @@ const PreviewModal = memo(({ content, onClose }) => {
           <button className="close-preview-btn" onClick={onClose}><X size={24} /></button>
         </div>
         <iframe title="preview" ref={iframeRef} className="preview-iframe" />
-      </motion.div>
+      </Motion.div>
     </div>
   );
 });
 
 const FeatureCard = memo(({ text, icon: Icon, colorClass, index, setInput }) => (
-  <motion.div 
+  <Motion.div
     initial={{ opacity: 0, y: 40, filter: 'blur(10px)' }}
     animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
     transition={{ delay: 0.1 * index, duration: 0.7, ease: [0.23, 1, 0.32, 1] }}
-    className="aura-card" 
+    className="aura-card"
     onClick={() => setInput(text)}
   >
     <div className="card-text">{text}</div>
     <div className="card-icon-container">
-      <Icon className={colorClass} size={24} />
+      {React.createElement(Icon, { className: colorClass, size: 24 })}
     </div>
-  </motion.div>
+  </Motion.div>
 ));
 
 function App() {
@@ -158,12 +161,13 @@ function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
   const [streamingMessage, setStreamingMessage] = useState('');
   const [previewCode, setPreviewCode] = useState(null);
+  const [showLanding, setShowLanding] = useState(messages.length === 0);
 
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = (instant = false) => {
     if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ 
+      messagesEndRef.current.scrollIntoView({
         behavior: instant ? 'auto' : 'smooth',
         block: 'center'
       });
@@ -180,6 +184,10 @@ function App() {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
+  useEffect(() => {
+    localStorage.setItem('chat_history', JSON.stringify(messages));
+  }, [messages]);
+
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
     if (!input.trim() || isLoading) return;
@@ -189,6 +197,7 @@ function App() {
     setMessages(newMessages);
     setInput('');
     setIsLoading(true);
+    setShowLanding(false);
 
     try {
       const response = await fetch(API_URL, {
@@ -221,20 +230,34 @@ function App() {
           if (!trimmedLine || !trimmedLine.startsWith('data: ')) continue;
           const dataStr = trimmedLine.replace(/^data: /, '').trim();
           if (dataStr === '[DONE]') break;
+          let data;
           try {
-            const data = JSON.parse(dataStr);
-            if (data.content) {
-              assistantMessage += data.content;
-              setStreamingMessage(assistantMessage);
-            }
-          } catch (e) {}
+            data = JSON.parse(dataStr);
+          } catch {
+            continue;
+          }
+
+          if (data.error) {
+            throw new Error(data.details || data.error);
+          }
+
+          if (data.content) {
+            assistantMessage += data.content;
+            setStreamingMessage(assistantMessage);
+          }
         }
       }
+
+      if (!assistantMessage.trim()) {
+        throw new Error('CodeLume returned an empty response. Please try again.');
+      }
+
       setMessages(prev => [...prev, { role: 'assistant', content: assistantMessage }]);
       setStreamingMessage('');
-      setIsLoading(false);
     } catch (error) {
+      setStreamingMessage('');
       setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${error.message}` }]);
+    } finally {
       setIsLoading(false);
     }
   };
@@ -250,16 +273,39 @@ function App() {
     URL.revokeObjectURL(url);
   };
 
-  const isLanding = messages.length === 0;
+  const handleBackToHome = () => {
+    setShowLanding(true);
+    setStreamingMessage('');
+  };
+
+  const isLanding = showLanding;
 
   return (
     <div className="app-wrapper">
       <div className="mesh-gradient" />
-      
-      <div className="aura-container">
+
+      <div className={`aura-container ${isLanding ? 'landing-active' : 'chat-active'}`}>
+        {!isLanding && (
+          <header className="chat-topbar">
+            <button
+              type="button"
+              className="back-home-btn"
+              onClick={handleBackToHome}
+              aria-label="Back to CodeLume home"
+            >
+              <ArrowLeft size={18} />
+              <span>Back to home</span>
+            </button>
+            <div className="chat-topbar-title">
+              <strong>CodeLume</strong>
+              <span><i /> Gemini assistant</span>
+            </div>
+          </header>
+        )}
+
         <AnimatePresence mode="wait">
           {isLanding ? (
-            <motion.div 
+            <Motion.div
               key="landing"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -267,116 +313,121 @@ function App() {
               transition={{ duration: 0.8 }}
               className="landing-header"
             >
-               <motion.h1 
+               <Motion.h1
                 initial={{ opacity: 0, x: -30 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.2, duration: 0.8 }}
                 className="brand-title"
                >
                  CodeLume
-               </motion.h1>
-               <motion.h2 
+               </Motion.h1>
+               <Motion.h2
                 initial={{ opacity: 0, x: -30 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.3, duration: 0.8 }}
                 className="sub-title"
                >
                 HTML CSS & JavaScript
-               </motion.h2>
-               
-               <motion.div 
+               </Motion.h2>
+
+               <Motion.div
                 initial={{ opacity: 0, scale: 0, rotate: -90 }}
                 animate={{ opacity: 1, scale: 1, rotate: 0 }}
                 transition={{ delay: 0.4, duration: 1.2, type: 'spring' }}
-                className="sparkle-icon-large" 
+                className="sparkle-icon-large"
                />
-               
+
                <div className="cards-grid">
-                  <FeatureCard 
-                    text="Design a home office setup for remote work under $500." 
-                    icon={PenTool} 
-                    colorClass="icon-blue" 
-                    index={0} 
+                  <FeatureCard
+                    text="Design a home office setup for remote work under $500."
+                    icon={PenTool}
+                    colorClass="icon-blue"
+                    index={0}
                     setInput={setInput}
                   />
-                  <FeatureCard 
-                    text="How can I improve my web development skills in 2025?" 
-                    icon={Lightbulb} 
-                    colorClass="icon-green" 
-                    index={1} 
+                  <FeatureCard
+                    text="How can I improve my web development skills in 2025?"
+                    icon={Lightbulb}
+                    colorClass="icon-green"
+                    index={1}
                     setInput={setInput}
                   />
-                  <FeatureCard 
-                    text="Suggest some useful tools for debugging JavaScript code." 
-                    icon={Compass} 
-                    colorClass="icon-yellow" 
-                    index={2} 
+                  <FeatureCard
+                    text="Suggest some useful tools for debugging JavaScript code."
+                    icon={Compass}
+                    colorClass="icon-yellow"
+                    index={2}
                     setInput={setInput}
                   />
-                  <FeatureCard 
-                    text="Create a React JS component for the simple todo list app." 
-                    icon={Code} 
-                    colorClass="icon-purple" 
-                    index={3} 
+                  <FeatureCard
+                    text="Create a React JS component for the simple todo list app."
+                    icon={Code}
+                    colorClass="icon-purple"
+                    index={3}
                     setInput={setInput}
                   />
                </div>
-            </motion.div>
+            </Motion.div>
           ) : (
-            <motion.div 
+            <Motion.div
               key="chat"
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               className="chat-messages"
             >
                {messages.map((m, i) => (
-                 <motion.div 
+                 <Motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.05 * (i % 5) }}
-                  key={i} 
-                  className="message-box"
+                  key={i}
+                  className={`message-box ${m.role}`}
                  >
                     <div className="m-avatar">
                       {m.role === 'assistant' ? <Sparkles size={22} fill="#4285f4" color="#4285f4" /> : <User size={22} />}
                     </div>
                     <div className="m-content">
-                      <ReactMarkdown 
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                          code({ inline, className, children, ...props }) {
-                            const match = /language-(\w+)/.exec(className || '');
-                            return !inline && match ? (
-                              <CodeBlock
-                                language={match[1]}
-                                value={String(children).replace(/\n$/, '')}
-                                theme={theme}
-                                handleDownload={handleDownload}
-                                setPreviewCode={setPreviewCode}
-                                {...props}
-                              />
-                            ) : (
-                              <code className={className} styles={{ backgroundColor: 'var(--bg-secondary)', padding: '2px 6px', borderRadius: '4px' }} {...props}>
-                                {children}
-                              </code>
-                            );
-                          }
-                        }}
-                      >
-                        {m.content}
-                      </ReactMarkdown>
+                      <div className="message-role">{m.role === 'assistant' ? 'CodeLume' : 'You'}</div>
+                      <div className="message-body">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            code({ inline, className, children, ...props }) {
+                              const match = /language-(\w+)/.exec(className || '');
+                              return !inline && match ? (
+                                <CodeBlock
+                                  language={match[1]}
+                                  value={String(children).replace(/\n$/, '')}
+                                  theme={theme}
+                                  handleDownload={handleDownload}
+                                  setPreviewCode={setPreviewCode}
+                                  {...props}
+                                />
+                              ) : (
+                                <code className={className} {...props}>
+                                  {children}
+                                </code>
+                              );
+                            }
+                          }}
+                        >
+                          {m.content}
+                        </ReactMarkdown>
+                      </div>
                     </div>
-                 </motion.div>
+                 </Motion.div>
                ))}
-               
+
                {(streamingMessage || (isLoading && !streamingMessage)) && (
-                  <div className="message-box">
+                  <div className="message-box assistant">
                     <div className="m-avatar">
                       <Sparkles size={22} fill="#4285f4" color="#4285f4" />
                     </div>
                     <div className="m-content">
+                      <div className="message-role">CodeLume</div>
+                      <div className="message-body">
                       {streamingMessage ? (
-                         <ReactMarkdown 
+                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
                           components={{
                             code({ inline, className, children, ...props }) {
@@ -407,38 +458,59 @@ function App() {
                            <div className="shimmer" style={{ width: '80%' }} />
                          </div>
                       )}
+                      </div>
                     </div>
                   </div>
                )}
                <div ref={messagesEndRef} />
-            </motion.div>
+            </Motion.div>
           )}
         </AnimatePresence>
 
         <div className="input-area-wrapper">
           <form className="input-container-pill" onSubmit={handleSubmit}>
-            <button type="button" className="attachment-btn"><ImageIcon size={22} /></button>
-            <input 
-              type="text" 
+            <button type="button" className="attachment-btn" aria-label="Attach an image" title="Image upload coming soon">
+              <ImageIcon size={22} />
+            </button>
+            <input
+              type="text"
               className="aura-input"
               placeholder="Ask CodeLume"
               value={input}
               onChange={(e) => setInput(e.target.value)}
             />
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               className={`send-btn-aura ${input.trim() ? 'active' : ''}`}
               disabled={!input.trim() || isLoading}
+              aria-label="Send message"
             >
               <Send size={22} />
             </button>
           </form>
 
-          <button className="circle-action-btn" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+          <button
+            type="button"
+            className="circle-action-btn"
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            aria-label="Toggle color theme"
+          >
             {theme === 'dark' ? <Sun size={24} /> : <Moon size={24} />}
           </button>
-          
-          <button className="circle-action-btn" onClick={() => { if(confirm('Clear all chats?')) { setMessages([]); localStorage.removeItem('chat_history'); } }}>
+
+          <button
+            type="button"
+            className="circle-action-btn"
+            aria-label="Clear conversation"
+            onClick={() => {
+              if (confirm('Clear all chats?')) {
+                setMessages([]);
+                setStreamingMessage('');
+                setShowLanding(true);
+                localStorage.removeItem('chat_history');
+              }
+            }}
+          >
             <Trash2 size={24} />
           </button>
         </div>
@@ -449,9 +521,9 @@ function App() {
       </div>
 
       {previewCode && (
-        <PreviewModal 
-          content={previewCode} 
-          onClose={() => setPreviewCode(null)} 
+        <PreviewModal
+          content={previewCode}
+          onClose={() => setPreviewCode(null)}
         />
       )}
     </div>
